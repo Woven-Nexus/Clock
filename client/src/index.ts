@@ -1,8 +1,8 @@
-import './app/app-element.js';
-
+import { ClockApp } from './app/app.cmp.js';
 import { SERVER_URL } from './app/constants.js';
 import { loadStyles } from './app/load-styles.js';
 
+ClockApp.register();
 
 loadStyles(
 	SERVER_URL + '/serve/root-design/1.0.0/',

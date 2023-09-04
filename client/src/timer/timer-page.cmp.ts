@@ -1,77 +1,87 @@
-import './time-element.js';
 import '@roenlie/mimic-elements/button';
 import '@roenlie/mimic-elements/icon';
 
+import { component } from '@roenlie/lit-fabric/core';
+import { useOnEvent } from '@roenlie/lit-fabric/hooks';
 import { swapItems } from '@roenlie/mimic-core/array';
-import { domId, EventOf } from '@roenlie/mimic-core/dom';
-import { listen } from '@roenlie/mimic-lit/decorators';
+import { domId, type EventOf } from '@roenlie/mimic-core/dom';
+import { DialogConfig } from '@roenlie/mimic-elements/dialog';
 import { sharedStyles } from '@roenlie/mimic-lit/styles';
-import { css, html, LitElement } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { css, html } from 'lit';
 import { map } from 'lit/directives/map.js';
 
-import type { TimeFieldElement, TimerElement } from './time-element.js';
+import { Timer, type TimerElement } from './timer.cmp.js';
+import type { TimeFieldElement } from './timer-field.cmp.js';
+
+Timer.register();
 
 
-type Timer = {
+interface Timer {
 	id: string;
 	label: string;
 	time: string;
 }
 
 
-@customElement('clk-timer-page')
-export class TimerPageElement extends LitElement {
+export const TimePage = component('clk-timer-page', element => {
+	const timers: Timer[] = JSON.parse(localStorage.getItem('clk-timers') ?? '[]');
 
-	protected timers: Timer[] = JSON.parse(localStorage.getItem('clk-timers') ?? '[]');
+	useOnEvent('update', (ev: CustomEvent) => {
+		console.log('update event');
 
-	@listen('update') protected handleUpdate(ev: CustomEvent) {
 		const target = ev.composedPath().at(0) as TimerElement;
+		const timer = timers.find(t => t.id === target.id);
+		console.log({ timer });
 
-		const timer = this.timers.find(t => t.id === target.id);
+
 		if (timer) {
 			timer.label = target.label;
 			timer.time = target.time;
 
-			this.updateLocalStorage();
-		}
-	}
 
-	@listen('remove') protected handleRemove(ev: CustomEvent) {
+			updateLocalStorage();
+		}
+	});
+
+	useOnEvent('remove', (ev: CustomEvent, element) => {
 		const target = ev.composedPath().at(0) as TimerElement;
 
-		const timer = this.timers.find(t => t.id === target.id);
+		const timer = timers.find(t => t.id === target.id);
 		if (timer) {
-			const indexToRemove = this.timers.indexOf(timer);
-			this.timers.splice(indexToRemove, 1);
-			this.updateLocalStorage();
+			const indexToRemove = timers.indexOf(timer);
+			timers.splice(indexToRemove, 1);
+			updateLocalStorage();
 
-			this.requestUpdate();
+			element.requestUpdate();
 		}
-	}
+	});
 
-	protected updateLocalStorage() {
-		localStorage.setItem('clk-timers', JSON.stringify(this.timers));
-	}
+	const updateLocalStorage = () => {
+		localStorage.setItem('clk-timers', JSON.stringify(timers));
+	};
 
-	protected newDialog() {
-		const dialogEl = document.createElement('mm-dialog');
-		dialogEl.modal = true;
-		dialogEl.closeOnBlur = true;
-		dialogEl.createConfig(() => ({
-			label: '',
-			time:  '0:0:0',
-		})).actions((dialog, state) => ({
-			save: () => {
-				const timer = { id: domId(), label: state.label, time: state.time };
-				this.timers.push(timer);
-				this.updateLocalStorage();
+	const newDialog = () => {
+		new DialogConfig().config({
+			modal:       true,
+			closeOnBlur: true,
+		}).state(() => {
+			return {
+				label: '',
+				time:  '0:0:0',
+			};
+		}).actions((dialog, state) => {
+			return {
+				save: () => {
+					const timer = { id: domId(), label: state.label, time: state.time };
+					timers.push(timer);
+					updateLocalStorage();
 
-				this.requestUpdate();
+					element.requestUpdate();
 
-				dialog.close();
-			},
-		})).template({
+					dialog.close();
+				},
+			};
+		}).template({
 			render: (dialog, state, actions) => html`
 				<div class="header">
 					<mm-text>
@@ -163,18 +173,16 @@ export class TimerPageElement extends LitElement {
 					padding-top: 12px;
 				}
 				`,
-		});
+		}).create(element);
+	};
 
-		this.renderRoot.append(dialogEl);
-	}
-
-	protected override render() {
-		return html`
-		${ map(this.timers, timer => html`
+	return ({
+		render: () => html`
+		${ map(timers, timer => html`
 			<clk-timer
 				id   =${ timer.id }
-				label=${ timer.label }
-				time =${ timer.time }
+				.label=${ timer.label }
+				.time =${ timer.time }
 				draggable="true"
 				@dragstart=${ (ev: DragEvent) => {
 					ev.dataTransfer!.effectAllowed = 'move';
@@ -185,13 +193,13 @@ export class TimerPageElement extends LitElement {
 				@drop=${ (ev: DragEvent) => {
 					const dropId = ev.dataTransfer!.getData('clock-id');
 					if (dropId !== timer.id) {
-						const fromIndex = this.timers.findIndex(t => t.id === dropId);
-						const toIndex = this.timers.findIndex(t => t.id === timer.id);
+						const fromIndex = timers.findIndex(t => t.id === dropId);
+						const toIndex = timers.findIndex(t => t.id === timer.id);
 
-						swapItems(this.timers, fromIndex, toIndex);
-						this.updateLocalStorage();
+						swapItems(timers, fromIndex, toIndex);
+						updateLocalStorage();
 
-						this.requestUpdate();
+						element.requestUpdate();
 					}
 				} }
 			></clk-timer>
@@ -201,7 +209,7 @@ export class TimerPageElement extends LitElement {
 			<mm-button
 				type="icon"
 				variant="text"
-				@click=${ this.newDialog }
+				@click=${ newDialog }
 			>
 				<mm-icon
 					style="font-size:20px;"
@@ -209,35 +217,33 @@ export class TimerPageElement extends LitElement {
 				></mm-icon>
 			</mm-button>
 		</div>
-		`;
-	}
-
-	public static override styles = [
-		sharedStyles,
-		css`
-		:host {
-			overflow: auto;
-			display: flex;
-			gap: 12px;
-			padding-block: 16px;
-			padding-inline: 22px;
-			flex-flow: row wrap;
-    		justify-content: center;
-			align-content: start;
-		}
-		.controls {
-			position: absolute;
-			right: 25px;
-			bottom: 25px;
-			display: flex;
-			background-color: rgb(50 50 50 / 50%);
-			box-shadow: var(--box-shadow-s);
-			padding: 8px;
-			border: 1px solid rgb(200 200 200 / 25%);
-			border-radius: 6px;
-			gap: 8px;
-		}
 		`,
-	];
-
-}
+		styles: [
+			sharedStyles,
+			css`
+			:host {
+				overflow: auto;
+				display: flex;
+				gap: 12px;
+				padding-block: 16px;
+				padding-inline: 22px;
+				flex-flow: row wrap;
+				 justify-content: center;
+				align-content: start;
+			}
+			.controls {
+				position: absolute;
+				right: 25px;
+				bottom: 25px;
+				display: flex;
+				background-color: rgb(50 50 50 / 50%);
+				box-shadow: var(--box-shadow-s);
+				padding: 8px;
+				border: 1px solid rgb(200 200 200 / 25%);
+				border-radius: 6px;
+				gap: 8px;
+			}
+			`,
+		],
+	});
+});
